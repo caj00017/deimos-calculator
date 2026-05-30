@@ -101,7 +101,7 @@ p.cav { font-size: 13px; line-height: 1.7; margin-bottom: 12px; }
       <div class="irow"><label>Refuel with lunar propellant in space</label>
         <input type="checkbox" id="a_refuel_lunar">
         <span class="units">Earth-origin routes only</span></div>
-      <p class="note" style="margin-top:8px">g&#8320; = 9.80665 m/s² (fixed). Rocket eq: m&#8320;/m&#8319; = exp(&Delta;v / (Isp &times; g&#8320;))</p>
+      <p class="note" style="margin-top:8px">g&#8320; = 9.80665 m/s² (fixed). Rocket eq applied per segment (back-to-front) so dropped dry mass per leg is accounted for.</p>
     </div>
     <div class="card">
       <h2>Cost Parameters</h2>
@@ -120,7 +120,7 @@ p.cav { font-size: 13px; line-height: 1.7; margin-bottom: 12px; }
       <div class="irow"><label>Reusability cost factor</label>
         <input type="number" id="a_reuse" value="1.0" step="0.05" min="0.05">
         <span class="units">1.0 = expendable, 0.1 = fully reusable</span></div>
-      <p class="note" style="margin-top:8px">Cost = initial mass &times; $/kg at origin &times; reusability factor. Mars/Deimos-origin routes use ISRU propellant cost. See Notes tab for model caveats.</p>
+      <p class="note" style="margin-top:8px">Per-segment cost overrides (set in the &Delta;-v Database tab) replace the default origin-based logic for that segment: override &times; segment initial mass &times; reuse. Otherwise the global model applies.</p>
     </div>
   </div>
 </div>
@@ -130,10 +130,20 @@ p.cav { font-size: 13px; line-height: 1.7; margin-bottom: 12px; }
   <div class="card">
     <h2>&Delta;-v Segment Database <span class="note">&mdash; all values are editable</span></h2>
     <table>
-      <thead><tr><th>Segment</th><th>&Delta;v (km/s)</th><th>Notes / Basis</th></tr></thead>
+      <thead><tr>
+        <th>Segment</th>
+        <th>&Delta;v (km/s)</th>
+        <th>Dry Mass (MT)</th>
+        <th>Cost Override ($/kg)</th>
+        <th>Notes / Basis</th>
+      </tr></thead>
       <tbody id="dvdb_body"></tbody>
     </table>
-    <p class="note" style="margin-top:10px">Routes automatically select the aerobraking or propulsive value based on the Assumptions tab checkboxes.</p>
+    <p class="note" style="margin-top:10px">
+      <strong>Dry Mass</strong>: non-payload mass (stage / structure / heat shield) carried then dropped after this segment burns.
+      <strong>Cost Override</strong>: when &gt; 0, replaces the global cost model for this segment as override &times; initial mass &times; reuse factor.
+      Routes pick the aerobraking or propulsive variant per the Assumptions tab.
+    </p>
   </div>
 </div>
 
@@ -157,6 +167,7 @@ p.cav { font-size: 13px; line-height: 1.7; margin-bottom: 12px; }
           <th>Mass Ratio</th>
           <th>Init. Mass / 1 MT payload (MT)</th>
           <th>Propellant (MT)</th>
+          <th>Dry Mass (MT)</th>
           <th>Cost / MT delivered</th>
           <th>vs Route 1 (&Delta;v)</th>
         </tr>
@@ -203,116 +214,183 @@ p.cav { font-size: 13px; line-height: 1.7; margin-bottom: 12px; }
   <div class="card">
     <h2>Model Assumptions &amp; Caveats</h2>
     <h3>What this tool does</h3>
-    <p class="cav">A <strong>first-order, single-stage rocket model</strong> for comparing transportation architectures. Useful for identifying which routes have inherent delta-v and mass advantages. Not suitable for mission design.</p>
+    <p class="cav">A <strong>first-order rocket model</strong> for comparing transportation architectures. Useful for identifying which routes have inherent delta-v and mass advantages. Not suitable for mission design.</p>
     <h3>Simplifications &amp; limitations</h3>
     <ul class="cav">
-      <li><strong>No staging model.</strong> Real vehicles for high-&Delta;v routes (&gt;6 km/s) would use staging, which dramatically reduces initial mass. The single-stage mass ratios here are conservative.</li>
-      <li><strong>No structural/dry mass.</strong> m&#8319; is treated as pure payload. In reality, tanks and structure add ~5&ndash;15% of propellant mass to m&#8319;.</li>
+      <li><strong>Per-segment dry mass</strong> is modeled as structural mass that is added to the end-mass of each segment and then dropped (staged) before the next segment begins. Set Dry Mass = 0 for a single-stack model.</li>
+      <li><strong>No staging optimization.</strong> The model evaluates the dry mass and propellant fraction you specify; it does not optimize stage sizing.</li>
       <li><strong>&Delta;v values are Hohmann-transfer approximations</strong> at mean Earth&ndash;Mars distance. Actual values vary &plusmn;15&ndash;20% depending on launch window alignment.</li>
-      <li><strong>Aerobraking is massless</strong> in this model. Heat shields add mass (typically 10&ndash;20% of entry mass) not captured here.</li>
-      <li><strong>Cost model is highly simplified:</strong> initial mass &times; $/kg at origin. Does not model propellant sourcing chain, infrastructure, or operations costs separately.</li>
+      <li><strong>Aerobraking is massless propulsively</strong>; the heat-shield mass should be captured by setting the segment Dry Mass field.</li>
+      <li><strong>Cost model:</strong> by default, initial mass &times; $/kg at origin. Per-segment Cost Override replaces this with override &times; that segment&rsquo;s initial mass &times; reuse factor &mdash; useful for the Earth&rarr;LEO leg, which in reality is a multi-stage launch with a well-known $/kg figure rather than a single-stage rocket equation result.</li>
       <li><strong>Mars/Deimos-origin routes</strong> use the ISRU propellant cost (default $0) for propellant. This assumes propellant is pre-positioned; the actual cost depends on the delivery architecture.</li>
       <li>LLO&rarr;TMI uses patched-conic approximation (~1.6 km/s). This is much less than LEO&rarr;TMI because LLO already sits high in Earth&rsquo;s gravity well &mdash; the core argument for using lunar-derived propellant.</li>
-      <li><strong>Lunar refueling cost model</strong> (when enabled): Earth launches only the vehicle + ascent propellant; in-space propellant comes from the Moon at the lunar-prop cost. Cost = (m&#8320;_launch &times; $/kg_LEO) + (m_prop_in_space &times; $/kg_lunar_prop). Does not model the lunar prop delivery chain itself.</li>
+      <li><strong>Lunar refueling cost model</strong> (when enabled): Earth launches only the vehicle (payload + all dry mass) + ascent propellant; in-space propellant comes from the Moon at the lunar-prop cost. Per-segment overrides take precedence on the affected segment.</li>
     </ul>
     <h3>&Delta;-v reference values</h3>
     <ul class="cav">
       <li>Earth surface &rarr; LEO: ~9.4 km/s (includes ~1.5 km/s gravity and drag losses)</li>
       <li>LEO &rarr; TMI: ~3.6 km/s (Hohmann, Oberth effect from LEO)</li>
       <li>LLO &rarr; TMI: ~1.6 km/s (patched-conic; the chief lunar-launch advantage)</li>
-      <li>Mars aerocapture to LMO: ~0.9 km/s; propulsive: ~2.5 km/s</li>
-      <li>LMO (300 km) &harr; Deimos (23,460 km): ~1.7 km/s (Hohmann)</li>
-      <li>Deimos &rarr; TEI: ~1.9 km/s to achieve C3 &asymp; 7 km&sup2;/s&sup2; for Earth return</li>
-      <li>Mars surface &rarr; LMO: ~3.8 km/s</li>
+      <li>Mars arrival, direct to Deimos: aerocapture ~2.3 km/s, propulsive ~4.2 km/s</li>
+      <li>Mars arrival, direct to surface (EDL): aerocapture ~1.0 km/s, propulsive ~6.3 km/s</li>
+      <li>Deimos &harr; Mars surface: aero ~1.5 km/s, propulsive ~5.5 km/s; surface&rarr;Deimos ~5.5 km/s</li>
+      <li>Deimos &rarr; TEI: ~1.9 km/s; Mars surface &rarr; TEI direct: ~5.5 km/s</li>
     </ul>
     <h3>Purpose</h3>
     <p class="cav">This tool is designed for <em>comparative trade studies only</em>. The primary question is whether Deimos provides logistical leverage as a staging node relative to direct Earth&ndash;Mars transport. Compare routes relative to each other; do not treat absolute values as precise mission parameters.</p>
     <h3>Key insight to watch for</h3>
-    <p class="cav">Deimos sits near the top of Mars&rsquo; gravity well and requires only ~1.7 km/s to reach from low Mars orbit. The question is whether pre-positioning propellant or cargo at Deimos reduces the overall mission mass budget for subsequent surface operations, even accounting for the extra &Delta;v to reach Deimos first.</p>
+    <p class="cav">Deimos sits near the top of Mars&rsquo; gravity well. The question is whether pre-positioning propellant or cargo at Deimos reduces the overall mission mass budget for subsequent surface operations, even accounting for the extra &Delta;v to reach Deimos first &mdash; particularly on the return leg, where leaving directly from Deimos rather than ascending from the surface to TEI offers a large delta-v advantage.</p>
   </div>
 </div>
 
 <script>
 const G0 = 9.80665;
 
+// Default dryMass values are per-segment stage / structure / heat-shield mass,
+// scaled for a ~1 MT payload reference mission. They are derived from rough analogs:
+//   - Launch stages: ~5–10% structural ratio relative to typical propellant mass for the burn
+//   - Aero entry stages (heat shield + landing structure): ~15–25% of entry mass
+//   - In-space kick stages: small (0.2–0.8 MT) tankage+engine
+// Cost Override is pre-populated for the two surface-launch legs (Earth→LEO, Lunar→LLO)
+// because those are dominated by multi-stage vehicles whose real $/kg figures are well known
+// and don't decompose cleanly via the rocket equation. All other segments default to 0 so
+// the global cost model (LEO / lunar launch / ISRU / refuel) drives them.
 const DV_SEGS = [
-  { id: 'earth_leo',         label: 'Earth surface → LEO',                      val: 9.40, note: 'Includes ~1.5 km/s gravity + drag losses' },
-  { id: 'leo_tmi',           label: 'LEO → Trans-Mars Injection (TMI)',          val: 3.60, note: 'Hohmann transfer, mean Earth–Mars distance' },
-  { id: 'lunar_llo',         label: 'Lunar surface → LLO (100 km)',             val: 1.87, note: 'Low Lunar Orbit ascent' },
-  { id: 'llo_tmi',           label: 'LLO → Trans-Mars Injection',               val: 1.60, note: 'LLO is already high in Earth gravity well: ~0.7 km/s Moon escape + small added burn for Mars C3 (patched-conic)' },
-  { id: 'mars_cap_aero',     label: 'Mars arrival capture (w/ aerobraking)',         val: 0.90, note: 'Aerocapture into LMO' },
-  { id: 'mars_cap_prop',     label: 'Mars arrival capture (propulsive only)',        val: 2.50, note: 'Propulsive capture to LMO, no atmosphere use' },
-  { id: 'lmo_surf_aero',     label: 'LMO → Mars surface (w/ aerobraking)',      val: 0.10, note: 'Final landing burn only; EDL handles the rest' },
-  { id: 'lmo_surf_prop',     label: 'LMO → Mars surface (propulsive only)',     val: 3.80, note: 'No aerodynamic braking used' },
-  { id: 'surf_lmo',          label: 'Mars surface → LMO',                       val: 3.80, note: 'Ascent to low Mars orbit (~300 km)' },
-  { id: 'lmo_deimos',        label: 'LMO → Deimos orbit',                       val: 1.72, note: 'Hohmann from LMO (300 km altitude) to Deimos (23,460 km from Mars center)' },
-  { id: 'deimos_lmo',        label: 'Deimos → LMO',                             val: 1.72, note: 'Same Hohmann transfer reversed' },
-  { id: 'deimos_tei',        label: 'Deimos → Trans-Earth Injection (TEI)',     val: 1.92, note: 'Escape Mars + achieve C3 ≈ 7 km²/s² for Earth Hohmann return' },
-  { id: 'lmo_tei',           label: 'LMO → Trans-Earth Injection',              val: 2.10, note: 'Direct TEI from LMO' },
-  { id: 'earth_ent_aero',    label: 'Earth entry (w/ aerobraking)',                 val: 0.00, note: 'Direct entry / splashdown; no propulsive burn' },
-  { id: 'earth_ent_prop',    label: 'Earth entry (propulsive, no aerobraking)',     val: 3.00, note: 'Propulsive orbital insertion + deorbit' },
+  { id: 'earth_leo',              label: 'Earth surface → LEO',                              val: 9.40, dryMass: 1.5, costOverride: 2000, note: 'Includes ~1.5 km/s gravity + drag losses. Multi-stage launcher; override $/kg replaces the rocket-equation cost for this leg.' },
+  { id: 'leo_tmi',                label: 'LEO → Trans-Mars Injection (TMI)',                  val: 3.60, dryMass: 0.8, costOverride: 0,    note: 'Hohmann transfer, mean Earth–Mars distance. Dry: TMI kick stage (tanks + engine).' },
+  { id: 'lunar_llo',              label: 'Lunar surface → LLO (100 km)',                     val: 1.87, dryMass: 0.4, costOverride: 5000, note: 'Low Lunar Orbit ascent. Override $/kg captures lunar launch infrastructure cost.' },
+  { id: 'llo_tmi',                label: 'LLO → Trans-Mars Injection',                       val: 1.60, dryMass: 0.2, costOverride: 0,    note: 'LLO is already high in Earth gravity well: ~0.7 km/s Moon escape + small added burn for Mars C3 (patched-conic). Dry: small kick stage.' },
+  { id: 'mars_cap_deimos_aero',   label: 'Mars capture → Deimos (w/ aerobraking)',           val: 2.30, dryMass: 0.4, costOverride: 0,    note: 'Aerocapture into elliptical orbit with apoapsis near Deimos, then circularization burn. Dry: heat shield + circularization stage.' },
+  { id: 'mars_cap_deimos_prop',   label: 'Mars capture → Deimos (propulsive only)',          val: 4.20, dryMass: 0.4, costOverride: 0,    note: 'Propulsive capture (~2.5 km/s) + transfer to Deimos altitude (~1.7 km/s). Dry: capture stage tankage.' },
+  { id: 'mars_cap_surf_aero',     label: 'Mars capture → Surface (w/ aerobraking)',          val: 1.00, dryMass: 0.6, costOverride: 0,    note: 'Direct entry, EDL handles most braking; ~0.1 km/s landing burn + small approach correction. Dry: entry capsule + EDL hardware.' },
+  { id: 'mars_cap_surf_prop',     label: 'Mars capture → Surface (propulsive only)',         val: 6.30, dryMass: 0.7, costOverride: 0,    note: 'Propulsive capture (~2.5) + propulsive descent (~3.8); no atmosphere used. Dry: large propulsive lander structure.' },
+  { id: 'deimos_surf_aero',       label: 'Deimos → Mars surface (w/ aerobraking)',           val: 1.50, dryMass: 0.5, costOverride: 0,    note: 'Deorbit burn from Deimos to atmosphere-grazing periapsis + aerobraking + landing burn. Dry: transfer stage + EDL hardware.' },
+  { id: 'deimos_surf_prop',       label: 'Deimos → Mars surface (propulsive only)',          val: 5.52, dryMass: 0.6, costOverride: 0,    note: 'Drop from Deimos (~1.7) + propulsive descent (~3.8). Dry: propulsive descent stage.' },
+  { id: 'surf_deimos',            label: 'Mars surface → Deimos',                            val: 5.52, dryMass: 0.6, costOverride: 0,    note: 'Ascent from surface (~3.8) + transfer to Deimos altitude (~1.7). Dry: MAV-class ascent stage.' },
+  { id: 'surf_tei',               label: 'Mars surface → Trans-Earth Injection (TEI)',       val: 5.50, dryMass: 0.7, costOverride: 0,    note: 'Direct ascent to Mars escape + TEI C3, slight Oberth benefit vs. ascending to orbit first. Dry: ascent + TEI stage.' },
+  { id: 'deimos_tei',             label: 'Deimos → Trans-Earth Injection (TEI)',             val: 1.92, dryMass: 0.2, costOverride: 0,    note: 'Escape Mars + achieve C3 ≈ 7 km²/s² for Earth Hohmann return. Dry: small TEI stage (Deimos sits near Mars escape velocity).' },
+  { id: 'earth_ent_aero',         label: 'Earth entry (w/ aerobraking)',                     val: 0.00, dryMass: 0.3, costOverride: 0,    note: 'Direct entry / splashdown; no propulsive burn. Dry: entry capsule heat shield + parachutes.' },
+  { id: 'earth_ent_prop',         label: 'Earth entry (propulsive, no aerobraking)',         val: 3.00, dryMass: 0.5, costOverride: 0,    note: 'Propulsive orbital insertion + deorbit. Dry: insertion/deorbit stage.' },
 ];
 
-function dv(id) {
-  const el = document.getElementById('dv_' + id);
+function getSegVal(id, kind) {
   const seg = DV_SEGS.find(s => s.id === id);
-  return el ? (parseFloat(el.value) || seg.val) : seg.val;
+  if (!seg) return 0;
+  const defaults = { dv: seg.val, dry: seg.dryMass || 0, cost: seg.costOverride || 0 };
+  const el = document.getElementById(`${kind}_${id}`);
+  if (!el) return defaults[kind];
+  const parsed = parseFloat(el.value);
+  if (isNaN(parsed)) return defaults[kind];
+  // For dv, fall back to default if 0 (a 0-km/s burn is treated as unset);
+  // dry mass and cost override accept 0 as a valid value.
+  if (kind === 'dv' && parsed === 0) return defaults.dv;
+  return parsed;
 }
 
+function dv(id) { return getSegVal(id, 'dv'); }
+
 function buildRoutes(aeroMars, aeroEarth) {
-  const mc = aeroMars  ? { label: 'Mars capture (aerobraking)',   dvId: 'mars_cap_aero' }
-                       : { label: 'Mars capture (propulsive)',    dvId: 'mars_cap_prop' };
-  const ml = aeroMars  ? { label: 'LMO→Mars surface (aerobraking)', dvId: 'lmo_surf_aero' }
-                       : { label: 'LMO→Mars surface (propulsive)',  dvId: 'lmo_surf_prop' };
-  const ee = aeroEarth ? { label: 'Earth entry (aerobraking)',   dvId: 'earth_ent_aero' }
-                       : { label: 'Earth entry (propulsive)',    dvId: 'earth_ent_prop' };
+  const mcD = aeroMars  ? { label: 'Mars capture→Deimos (aerobraking)',  dvId: 'mars_cap_deimos_aero' }
+                        : { label: 'Mars capture→Deimos (propulsive)',   dvId: 'mars_cap_deimos_prop' };
+  const mcS = aeroMars  ? { label: 'Mars capture→Surface (aerobraking)', dvId: 'mars_cap_surf_aero' }
+                        : { label: 'Mars capture→Surface (propulsive)',  dvId: 'mars_cap_surf_prop' };
+  const dS  = aeroMars  ? { label: 'Deimos→Mars surface (aerobraking)',  dvId: 'deimos_surf_aero' }
+                        : { label: 'Deimos→Mars surface (propulsive)',   dvId: 'deimos_surf_prop' };
+  const ee  = aeroEarth ? { label: 'Earth entry (aerobraking)',          dvId: 'earth_ent_aero' }
+                        : { label: 'Earth entry (propulsive)',           dvId: 'earth_ent_prop' };
 
   return [
     { name: 'Earth → Mars surface',         dir: 'Outbound', origin: 'earth',
-      segs: [{ l:'Earth surface→LEO', id:'earth_leo'}, {l:'LEO→TMI', id:'leo_tmi'}, {l:mc.label, id:mc.dvId}, {l:ml.label, id:ml.dvId}] },
+      segs: [{ l:'Earth surface→LEO', id:'earth_leo'}, {l:'LEO→TMI', id:'leo_tmi'}, {l:mcS.label, id:mcS.dvId}] },
     { name: 'Earth → Deimos',               dir: 'Outbound', origin: 'earth',
-      segs: [{ l:'Earth surface→LEO', id:'earth_leo'}, {l:'LEO→TMI', id:'leo_tmi'}, {l:mc.label, id:mc.dvId}, {l:'LMO→Deimos', id:'lmo_deimos'}] },
+      segs: [{ l:'Earth surface→LEO', id:'earth_leo'}, {l:'LEO→TMI', id:'leo_tmi'}, {l:mcD.label, id:mcD.dvId}] },
     { name: 'Lunar surface → Deimos',       dir: 'Outbound', origin: 'lunar',
-      segs: [{ l:'Lunar surface→LLO', id:'lunar_llo'}, {l:'LLO→TMI', id:'llo_tmi'}, {l:mc.label, id:mc.dvId}, {l:'LMO→Deimos', id:'lmo_deimos'}] },
+      segs: [{ l:'Lunar surface→LLO', id:'lunar_llo'}, {l:'LLO→TMI', id:'llo_tmi'}, {l:mcD.label, id:mcD.dvId}] },
     { name: 'Lunar surface → Mars surface', dir: 'Outbound', origin: 'lunar',
-      segs: [{ l:'Lunar surface→LLO', id:'lunar_llo'}, {l:'LLO→TMI', id:'llo_tmi'}, {l:mc.label, id:mc.dvId}, {l:ml.label, id:ml.dvId}] },
+      segs: [{ l:'Lunar surface→LLO', id:'lunar_llo'}, {l:'LLO→TMI', id:'llo_tmi'}, {l:mcS.label, id:mcS.dvId}] },
     { name: 'Deimos → Mars surface',        dir: 'Outbound', origin: 'deimos',
-      segs: [{ l:'Deimos→LMO', id:'deimos_lmo'}, {l:ml.label, id:ml.dvId}] },
+      segs: [{ l:dS.label, id:dS.dvId}] },
     { name: 'Mars surface → Earth',         dir: 'Return',   origin: 'mars',
-      segs: [{ l:'Mars surface→LMO', id:'surf_lmo'}, {l:'LMO→TEI', id:'lmo_tei'}, {l:ee.label, id:ee.dvId}] },
+      segs: [{ l:'Mars surface→TEI', id:'surf_tei'}, {l:ee.label, id:ee.dvId}] },
     { name: 'Deimos → Earth',               dir: 'Return',   origin: 'deimos',
       segs: [{ l:'Deimos→TEI', id:'deimos_tei'}, {l:ee.label, id:ee.dvId}] },
-    { name: 'Mars → Deimos → Earth',   dir: 'Return',   origin: 'mars',
-      segs: [{ l:'Mars surface→LMO', id:'surf_lmo'}, {l:'LMO→Deimos', id:'lmo_deimos'}, {l:'Deimos→TEI', id:'deimos_tei'}, {l:ee.label, id:ee.dvId}] },
+    { name: 'Mars → Deimos → Earth',        dir: 'Return',   origin: 'mars',
+      segs: [{ l:'Mars surface→Deimos', id:'surf_deimos'}, {l:'Deimos→TEI', id:'deimos_tei'}, {l:ee.label, id:ee.dvId}] },
   ];
 }
 
 function calcRoute(route, isp, payload, costs, dvOverride, refuelLunar) {
-  const segDv = seg => dvOverride ? (dv(seg.id) * dvOverride) : dv(seg.id);
-  const total_dv = route.segs.reduce((s, seg) => s + segDv(seg), 0);
-  const MR = Math.exp(total_dv * 1000 / (isp * G0));
-  const m0 = payload * MR;
-  const mprop = m0 - payload;
+  const segDvOf = id => dvOverride ? (getSegVal(id, 'dv') * dvOverride) : getSegVal(id, 'dv');
 
-  let cost = 0;
-  if (route.origin === 'earth') {
-    if (refuelLunar) {
-      // Earth launches only the vehicle (payload) + propellant for first ascent burn;
-      // remaining in-space propellant comes from the Moon at lunar-prop cost.
-      const dv_launch = segDv(route.segs[0]);
-      const dv_rest = total_dv - dv_launch;
-      const m0_launch = payload * Math.exp(dv_launch * 1000 / (isp * G0));
-      const m_prop_lunar = payload * (Math.exp(dv_rest * 1000 / (isp * G0)) - 1);
-      cost = (m0_launch * 1000 * costs.leo + m_prop_lunar * 1000 * costs.lunar_prop) * costs.reuse;
-    } else {
-      cost = m0 * 1000 * costs.leo * costs.reuse;
-    }
-  } else if (route.origin === 'lunar') {
-    cost = m0 * 1000 * costs.lunar * costs.reuse;
-  } else {
-    cost = mprop * 1000 * costs.isru * costs.reuse;
+  // Backwards iteration: start at payload-only and walk from end of route to start,
+  // adding each segment's dropped dry mass then applying the rocket equation.
+  const details = new Array(route.segs.length);
+  let mFinalCarry = payload;
+  for (let i = route.segs.length - 1; i >= 0; i--) {
+    const seg = route.segs[i];
+    const segDv     = segDvOf(seg.id);
+    const dryMass   = getSegVal(seg.id, 'dry');
+    const override  = getSegVal(seg.id, 'cost');
+    const mFinalSeg = mFinalCarry + dryMass;
+    const mInitSeg  = mFinalSeg * Math.exp(segDv * 1000 / (isp * G0));
+    const propSeg   = mInitSeg - mFinalSeg;
+    details[i] = {
+      segDv,
+      dryMass,
+      override,
+      m_initial: mInitSeg,
+      m_final:   mFinalSeg,
+      propellant: propSeg,
+    };
+    mFinalCarry = mInitSeg;
   }
-  return { total_dv, MR, m0, mprop, cost };
+
+  const m0          = mFinalCarry;                      // initial mass at start of segment 0
+  const total_dv    = details.reduce((s, d) => s + d.segDv, 0);
+  const totalDryMass = details.reduce((s, d) => s + d.dryMass, 0);
+  const mprop       = m0 - payload - totalDryMass;
+  const MR          = m0 / payload;
+
+  // Cost: per-segment, either via override or via the global fallback (origin-based).
+  let cost = 0;
+  for (let i = 0; i < details.length; i++) {
+    const d = details[i];
+    let segCost;
+    if (d.override > 0) {
+      // Override applies to the mass present at the start of this segment.
+      segCost = d.m_initial * 1000 * d.override * costs.reuse;
+    } else if (i === 0) {
+      // Launch segment fallback
+      if (route.origin === 'earth') {
+        if (refuelLunar) {
+          // Only payload + all dry mass + this segment's launch propellant come from Earth;
+          // in-space propellant for later segments is sourced from the Moon and counted below.
+          const massFromEarth = (payload + totalDryMass) * Math.exp(d.segDv * 1000 / (isp * G0));
+          segCost = massFromEarth * 1000 * costs.leo * costs.reuse;
+        } else {
+          segCost = d.m_initial * 1000 * costs.leo * costs.reuse;
+        }
+      } else if (route.origin === 'lunar') {
+        segCost = d.m_initial * 1000 * costs.lunar * costs.reuse;
+      } else {
+        // Mars / Deimos origin: only propellant carries a cost (ISRU $/kg)
+        segCost = d.propellant * 1000 * costs.isru * costs.reuse;
+      }
+    } else {
+      // In-space segments fallback
+      if (route.origin === 'earth' && refuelLunar) {
+        segCost = d.propellant * 1000 * costs.lunar_prop * costs.reuse;
+      } else if (route.origin === 'earth' || route.origin === 'lunar') {
+        // Propellant for these segments was already lifted from the surface and paid for in segment 0.
+        segCost = 0;
+      } else {
+        segCost = d.propellant * 1000 * costs.isru * costs.reuse;
+      }
+    }
+    cost += segCost;
+  }
+
+  return { total_dv, MR, m0, mprop, totalDryMass, cost, details };
 }
 
 function getState() {
@@ -354,12 +432,17 @@ function recalc() {
 }
 
 function renderDvDB() {
-  document.getElementById('dvdb_body').innerHTML = DV_SEGS.map(seg =>
-    `<tr><td>${seg.label}</td>
-     <td><input type="number" id="dv_${seg.id}" value="${seg.val}" step="0.05" min="0" style="width:80px"></td>
-     <td class="note">${seg.note}</td></tr>`
+  const body = document.getElementById('dvdb_body');
+  body.innerHTML = DV_SEGS.map(seg =>
+    `<tr>
+       <td>${seg.label}</td>
+       <td><input type="number" id="dv_${seg.id}"   value="${seg.val}"          step="0.05" min="0" style="width:80px"></td>
+       <td><input type="number" id="dry_${seg.id}"  value="${seg.dryMass || 0}" step="0.1"  min="0" style="width:80px"></td>
+       <td><input type="number" id="cost_${seg.id}" value="${seg.costOverride || 0}" step="100" min="0" style="width:100px"></td>
+       <td class="note">${seg.note}</td>
+     </tr>`
   ).join('');
-  document.getElementById('dvdb_body').addEventListener('input', recalc);
+  body.addEventListener('input', recalc);
 }
 
 function renderRoutes(routes, metrics, st) {
@@ -386,6 +469,7 @@ function renderRoutes(routes, metrics, st) {
         <tr><td>Mass ratio (m&#8320;/m&#8319;)</td><td>${f2(m.MR)}</td></tr>
         <tr><td>Initial mass / ${st.payload} MT</td><td>${f2(m.m0)} MT</td></tr>
         <tr><td>Propellant mass</td><td>${f2(m.mprop)} MT</td></tr>
+        <tr><td>Dry mass (staged)</td><td>${f2(m.totalDryMass)} MT</td></tr>
         <tr><td>Cost / MT delivered</td><td>${fCost(m.cost)}</td></tr>
       </table>
     </div>`;
@@ -419,6 +503,7 @@ function renderComparison(routes, metrics) {
       <td>${f2(m.MR)}</td>
       <td>${f2(m.m0)}</td>
       <td>${f2(m.mprop)}</td>
+      <td>${f2(m.totalDryMass)}</td>
       <td>${fCost(m.cost)}</td>
       <td>${badge}</td>
     </tr>`;
@@ -447,7 +532,7 @@ function renderSensitivity(routes, st) {
     Math.abs(pv - refVal) < Math.abs(values[bi] - refVal) ? i : bi, 0);
 
   document.getElementById('sens_head').innerHTML =
-    `<tr><th>${colLabel}</th><th>&Delta;v (km/s)</th><th>Mass Ratio</th><th>Init. Mass (MT)</th><th>Prop. Mass (MT)</th><th>Cost / MT</th></tr>`;
+    `<tr><th>${colLabel}</th><th>&Delta;v (km/s)</th><th>Mass Ratio</th><th>Init. Mass (MT)</th><th>Prop. Mass (MT)</th><th>Dry (MT)</th><th>Cost / MT</th></tr>`;
 
   document.getElementById('sens_body').innerHTML = values.map((pv, i) => {
     let isp = st.isp, costs = {...st.costs}, dvMult = null;
@@ -460,7 +545,7 @@ function renderSensitivity(routes, st) {
     return `<tr${hl}>
       <td><strong>${param === 'dv_mult' ? pv.toFixed(2)+'&times;' : pv.toLocaleString()}${cur}</strong></td>
       <td>${f2(m.total_dv)}</td><td>${f2(m.MR)}</td>
-      <td>${f2(m.m0)}</td><td>${f2(m.mprop)}</td>
+      <td>${f2(m.m0)}</td><td>${f2(m.mprop)}</td><td>${f2(m.totalDryMass)}</td>
       <td>${fCost(m.cost)}</td></tr>`;
   }).join('');
 }
